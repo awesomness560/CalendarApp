@@ -16,7 +16,6 @@ const generateDummyData = (): DayData[] => {
   for (let i = 0; i < 14; i++) {
     const currentDate = addDays(startDate, i);
     const dateString = format(currentDate, "yyyy-MM-dd");
-    const isHighRes = i < 2; // Only first two days get the timeline
 
     // 1. Mock Events (Classes & Special)
     const events: CalendarEvent[] = [];
