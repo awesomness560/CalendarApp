@@ -27,7 +27,7 @@
 
   /* --- 3. Primary Accent (Active Day & Density Dots) --- */
   /* Bright Indigo for the "Today" highlight */
-  --color-primary: #6366f1;
+  --color-primary: #008cff;
   /* Dimmer Indigo for inactive "future" dots */
   --color-primary-dim: #4338ca;
 
