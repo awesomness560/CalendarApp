@@ -429,3 +429,105 @@ function formatTask(item: GoogleTask): Task {
 
   return formatted;
 }
+
+// ==========================================
+// TASK COMPLETION API
+// ==========================================
+
+/**
+ * Marks a task as completed in Google Tasks
+ */
+export const completeTask = async (
+  accessToken: string,
+  taskListId: string,
+  taskId: string,
+): Promise<void> => {
+  console.log("✅ Marking task as complete:", { taskListId, taskId });
+
+  try {
+    const response = await fetch(
+      `https://tasks.googleapis.com/tasks/v1/lists/${taskListId}/tasks/${taskId}`,
+      {
+        method: "PATCH",
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          status: "completed",
+        }),
+      },
+    );
+
+    console.log("✅ Complete task response status:", response.status);
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error("❌ Failed to complete task:", response.status, errorText);
+      throw new Error(
+        `Failed to complete task: ${response.status} ${errorText}`,
+      );
+    }
+
+    const updatedTask = await response.json();
+    console.log("✅ Task marked as complete:", updatedTask);
+  } catch (error) {
+    console.error("❌ Error completing task:", error);
+    throw error;
+  }
+};
+
+/**
+ * Helper to find which task list a task belongs to
+ * This is needed because we need the taskListId to complete a task
+ */
+export const findTaskListForTask = async (
+  accessToken: string,
+  taskId: string,
+): Promise<string | null> => {
+  console.log("🔍 Finding task list for task:", taskId);
+
+  try {
+    // Get all task lists
+    const listsResponse = await fetch(
+      "https://tasks.googleapis.com/tasks/v1/users/@me/lists",
+      { headers: { Authorization: `Bearer ${accessToken}` } },
+    );
+
+    if (!listsResponse.ok) {
+      console.warn("⚠️ Failed to fetch task lists for task lookup");
+      return null;
+    }
+
+    const listsData = await listsResponse.json();
+    const taskLists = listsData.items || [];
+
+    // Search through each task list to find the task
+    for (const list of taskLists) {
+      try {
+        const tasksResponse = await fetch(
+          `https://tasks.googleapis.com/tasks/v1/lists/${list.id}/tasks`,
+          { headers: { Authorization: `Bearer ${accessToken}` } },
+        );
+
+        if (tasksResponse.ok) {
+          const tasksData = await tasksResponse.json();
+          const tasks = tasksData.items || [];
+
+          if (tasks.some((task: any) => task.id === taskId)) {
+            console.log("✅ Found task in list:", list.title, list.id);
+            return list.id;
+          }
+        }
+      } catch (error) {
+        console.warn(`⚠️ Error searching in task list ${list.title}:`, error);
+      }
+    }
+
+    console.warn("⚠️ Task not found in any list:", taskId);
+    return null;
+  } catch (error) {
+    console.error("❌ Error finding task list:", error);
+    return null;
+  }
+};

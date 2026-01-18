@@ -1,4 +1,5 @@
 import React from "react";
+import { motion } from "motion/react";
 import type { Task } from "../types";
 
 interface TaskCardProps {
@@ -6,6 +7,7 @@ interface TaskCardProps {
   isExpanded: boolean;
   onToggleExpand: (id: string) => void;
   onComplete: (id: string) => void;
+  isCompleting?: boolean;
 }
 
 export const TaskCard: React.FC<TaskCardProps> = ({
@@ -13,6 +15,7 @@ export const TaskCard: React.FC<TaskCardProps> = ({
   isExpanded,
   onToggleExpand,
   onComplete,
+  isCompleting = false,
 }) => {
   // Handle the interaction logic based on state
   const handleClick = (e: React.MouseEvent) => {
@@ -33,7 +36,20 @@ export const TaskCard: React.FC<TaskCardProps> = ({
   };
 
   return (
-    <div
+    <motion.div
+      layout
+      initial={{ opacity: 1, scale: 1 }}
+      exit={{
+        opacity: 0,
+        scale: 0.8,
+        x: 100,
+        transition: {
+          duration: 0.3,
+          ease: "easeInOut",
+        },
+      }}
+      whileHover={{ scale: 1.01 }}
+      whileTap={{ scale: 0.99 }}
       onClick={handleClick}
       className={`
         relative w-full rounded-lg transition-all duration-300 ease-in-out cursor-pointer overflow-hidden 
@@ -42,6 +58,7 @@ export const TaskCard: React.FC<TaskCardProps> = ({
             ? "bg-surface shadow-xl scale-[1.02] border border-surface-active border-l-4 border-l-surface-active py-5 px-5" // Expanded Styles
             : "bg-surface border border-surface-hover border-l-4 border-l-surface-hover py-4 px-4" // Normal Styles
         }
+        ${isCompleting ? "opacity-50 pointer-events-none" : ""}
       `}
     >
       {/* --- Top Row: Title & Chevron --- */}
@@ -98,10 +115,18 @@ export const TaskCard: React.FC<TaskCardProps> = ({
 
         {/* The "Tap Again" Prompt */}
         <div className="flex items-center gap-2 text-surface-active text-sm font-semibold animate-pulse mt-4">
-          <span className="w-4 h-4 rounded-full border-2 border-surface-active"></span>
-          Tap again to complete
+          <motion.span
+            className="w-4 h-4 rounded-full border-2 border-surface-active"
+            animate={isCompleting ? { rotate: 360 } : {}}
+            transition={{
+              duration: 1,
+              repeat: isCompleting ? Infinity : 0,
+              ease: "linear",
+            }}
+          />
+          {isCompleting ? "Completing..." : "Tap again to complete"}
         </div>
       </div>
-    </div>
+    </motion.div>
   );
 };

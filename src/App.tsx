@@ -2,61 +2,152 @@
 import React, { useState, useRef, useEffect } from "react";
 import { useGoogleLogin, googleLogout } from "@react-oauth/google";
 import { DUMMY_DATA } from "./data";
-import { fetchGoogleData, SCOPES } from "./logic/googleService";
-import type { DayData } from "./types";
+import { SCOPES } from "./logic/googleService";
+import {
+  useGoogleData,
+  useRefreshGoogleData,
+  useClearGoogleData,
+  usePrefetchGoogleData,
+} from "./hooks/useGoogleData";
 import Day from "./components/Day";
 import Sidebar from "./components/Sidebar";
+
+const STORAGE_KEYS = {
+  ACCESS_TOKEN: "google_access_token",
+  TOKEN_EXPIRY: "google_token_expiry",
+  IS_AUTHENTICATED: "google_is_authenticated",
+};
 
 const App: React.FC = () => {
   const [selectedDayIndex, setSelectedDayIndex] = useState(0);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [accessToken, setAccessToken] = useState<string>("");
-  const [googleData, setGoogleData] = useState<DayData[]>(DUMMY_DATA);
-  const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState<string>("");
 
   const mainContentRef = useRef<HTMLDivElement>(null);
   const dayRefs = useRef<(HTMLDivElement | null)[]>([]);
   const isScrollingFromClick = useRef(false);
 
+  // Tanstack Query hooks
+  const {
+    data: googleData = DUMMY_DATA,
+    isLoading,
+    error: queryError,
+    isError,
+    isFetching,
+    isRefetching,
+  } = useGoogleData(accessToken, isAuthenticated);
+
+  const refreshMutation = useRefreshGoogleData();
+  const clearGoogleData = useClearGoogleData();
+  const prefetchGoogleData = usePrefetchGoogleData();
+
+  // Convert query error to string for display
+  const error =
+    isError && queryError
+      ? queryError instanceof Error
+        ? queryError.message
+        : "An error occurred"
+      : "";
+
+  // Check for existing session on component mount
+  useEffect(() => {
+    const checkExistingSession = async () => {
+      const storedToken = localStorage.getItem(STORAGE_KEYS.ACCESS_TOKEN);
+      const storedExpiry = localStorage.getItem(STORAGE_KEYS.TOKEN_EXPIRY);
+      const storedAuth = localStorage.getItem(STORAGE_KEYS.IS_AUTHENTICATED);
+
+      console.log("🔍 Checking for existing session:", {
+        hasToken: !!storedToken,
+        hasExpiry: !!storedExpiry,
+        isAuthenticated: storedAuth === "true",
+      });
+
+      if (storedToken && storedExpiry && storedAuth === "true") {
+        const expiryTime = parseInt(storedExpiry);
+        const now = Date.now();
+
+        if (now < expiryTime) {
+          console.log("✅ Valid session found, restoring authentication");
+          setAccessToken(storedToken);
+          setIsAuthenticated(true);
+
+          // Prefetch data with restored token (Tanstack Query will handle the actual fetching)
+          prefetchGoogleData(storedToken);
+        } else {
+          console.log("⏰ Session expired, clearing stored data");
+          clearStoredSession();
+        }
+      } else {
+        console.log("❌ No valid session found");
+      }
+    };
+
+    checkExistingSession();
+  }, [prefetchGoogleData]);
+
+  // Helper function to store session data
+  const storeSession = (token: string, expiresIn: number = 3600) => {
+    const expiryTime = Date.now() + expiresIn * 1000; // Convert seconds to milliseconds
+
+    localStorage.setItem(STORAGE_KEYS.ACCESS_TOKEN, token);
+    localStorage.setItem(STORAGE_KEYS.TOKEN_EXPIRY, expiryTime.toString());
+    localStorage.setItem(STORAGE_KEYS.IS_AUTHENTICATED, "true");
+
+    console.log("💾 Session stored:", {
+      expiresIn: `${expiresIn} seconds`,
+      expiryTime: new Date(expiryTime).toLocaleString(),
+    });
+  };
+
+  // Helper function to clear stored session
+  const clearStoredSession = () => {
+    localStorage.removeItem(STORAGE_KEYS.ACCESS_TOKEN);
+    localStorage.removeItem(STORAGE_KEYS.TOKEN_EXPIRY);
+    localStorage.removeItem(STORAGE_KEYS.IS_AUTHENTICATED);
+    console.log("🗑️ Session cleared from storage");
+  };
+
   // Google Login
   const login = useGoogleLogin({
     onSuccess: async (tokenResponse) => {
       console.log("🔐 Google login successful:", tokenResponse);
+
       setAccessToken(tokenResponse.access_token);
       setIsAuthenticated(true);
-      setError("");
 
-      // Fetch Google data immediately after login
-      await fetchData(tokenResponse.access_token);
+      // Store session data (Google tokens typically expire in 1 hour)
+      const expiresIn = tokenResponse.expires_in || 3600;
+      storeSession(tokenResponse.access_token, expiresIn);
+
+      // Tanstack Query will automatically fetch data when accessToken and isAuthenticated change
     },
     onError: (error) => {
       console.error("❌ Google login failed:", error);
-      setError("Failed to sign in with Google");
+      clearStoredSession();
     },
     scope: SCOPES,
   });
 
-  // Fetch Google data
-  const fetchData = async (token: string = accessToken) => {
-    if (!token) {
-      console.warn("⚠️ No access token available for data fetch");
+  // Manual refresh function using the mutation
+  const handleRefresh = async () => {
+    if (!accessToken) {
+      console.warn("⚠️ No access token available for refresh");
       return;
     }
 
-    setIsLoading(true);
-    setError("");
-
     try {
-      console.log("🔄 Starting data fetch...");
-      const data = await fetchGoogleData(token);
-      setGoogleData(data);
-      console.log("✅ Data fetch completed, updating UI with:", data);
+      await refreshMutation.mutateAsync(accessToken);
     } catch (err) {
-      console.error("❌ Failed to fetch Google data:", err);
-      setError("Failed to fetch Google data. Check console for details.");
-    } finally {
-      setIsLoading(false);
+      console.error("❌ Failed to refresh data:", err);
+
+      // Check if it's an authentication error
+      if (
+        err instanceof Error &&
+        (err.message.includes("401") || err.message.includes("unauthorized"))
+      ) {
+        console.log("🔑 Token appears to be invalid, clearing session");
+        logout();
+      }
     }
   };
 
@@ -66,8 +157,8 @@ const App: React.FC = () => {
     googleLogout();
     setIsAuthenticated(false);
     setAccessToken("");
-    setGoogleData(DUMMY_DATA);
-    setError("");
+    clearStoredSession();
+    clearGoogleData(); // Clear Tanstack Query cache
   };
 
   const handleDaySelect = (index: number) => {
@@ -133,7 +224,7 @@ const App: React.FC = () => {
       {/* Sidebar - 20% width */}
       <div className="w-[20%] bg-surface flex flex-col">
         {!isAuthenticated && (
-          <div className="p-4 border-b border-gray-200 flex-shrink-0">
+          <div className="p-4 border-b border-gray-200 shrink-0">
             <div className="space-y-2">
               <button
                 onClick={() => login()}
@@ -152,6 +243,24 @@ const App: React.FC = () => {
                 {error}
               </div>
             )}
+          </div>
+        )}
+
+        {/* Loading indicator for authenticated users */}
+        {isAuthenticated && (isLoading || isFetching || isRefetching) && (
+          <div className="p-4 border-b border-gray-200 shrink-0">
+            <div className="text-xs text-gray-600 text-center">
+              {isRefetching ? "🔄 Updating..." : "📡 Loading..."}
+            </div>
+          </div>
+        )}
+
+        {/* Error display for authenticated users */}
+        {isAuthenticated && error && (
+          <div className="p-4 border-b border-gray-200 shrink-0">
+            <div className="p-2 bg-red-100 border border-red-300 rounded text-red-700 text-xs">
+              {error}
+            </div>
           </div>
         )}
 
@@ -176,17 +285,26 @@ const App: React.FC = () => {
               dayRefs.current[index] = el;
             }}
           >
-            <Day dayData={dayData} />
+            <Day dayData={dayData} accessToken={accessToken} />
           </div>
         ))}
         {isAuthenticated && (
           <div className="p-4 w-full text-center">
-            <button
-              onClick={logout}
-              className="text-xs text-gray-500 hover:text-gray-700 transition-colors"
-            >
-              Sign out
-            </button>
+            <div className="flex justify-center gap-4">
+              <button
+                onClick={handleRefresh}
+                disabled={refreshMutation.isPending}
+                className="text-xs text-gray-500 hover:text-gray-700 transition-colors disabled:opacity-50"
+              >
+                {refreshMutation.isPending ? "Refreshing..." : "Refresh"}
+              </button>
+              <button
+                onClick={logout}
+                className="text-xs text-gray-500 hover:text-gray-700 transition-colors"
+              >
+                Sign out
+              </button>
+            </div>
           </div>
         )}
       </div>

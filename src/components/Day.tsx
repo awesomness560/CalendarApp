@@ -1,16 +1,24 @@
 // Day.tsx
 import React, { useState } from "react";
+import { AnimatePresence } from "motion/react";
+import { useCompleteTask } from "../hooks/useGoogleData";
 import type { DayData } from "../types";
 import { EventCard } from "./EventCard";
 import { TaskCard } from "./Task";
 
 interface DayProps {
   dayData: DayData;
+  accessToken?: string;
 }
 
-const Day: React.FC<DayProps> = ({ dayData }) => {
+const Day: React.FC<DayProps> = ({ dayData, accessToken }) => {
   // State for managing expanded tasks
   const [expandedTasks, setExpandedTasks] = useState<Set<string>>(new Set());
+  // State for tracking tasks being removed (for animation)
+  const [removingTasks, setRemovingTasks] = useState<Set<string>>(new Set());
+
+  // Mutation for completing tasks
+  const completeTaskMutation = useCompleteTask();
 
   // Format the date to show day name and date (e.g., "Mon 19")
   const formatDay = (date: Date) => {
@@ -33,15 +41,49 @@ const Day: React.FC<DayProps> = ({ dayData }) => {
   };
 
   // Handle task completion
-  const handleComplete = (taskId: string) => {
-    // In a real app, this would update the task's completion status
-    console.log(`Completing task: ${taskId}`);
-    // For now, just collapse the task
-    setExpandedTasks((prev) => {
-      const newSet = new Set(prev);
-      newSet.delete(taskId);
-      return newSet;
-    });
+  const handleComplete = async (taskId: string) => {
+    if (!accessToken) {
+      console.warn("⚠️ No access token available for task completion");
+      return;
+    }
+
+    try {
+      // Add to removing tasks for animation
+      setRemovingTasks((prev) => new Set([...prev, taskId]));
+
+      // Complete the task via API
+      await completeTaskMutation.mutateAsync({
+        accessToken,
+        taskId,
+      });
+
+      console.log(`✅ Task completed: ${taskId}`);
+
+      // Remove from expanded tasks
+      setExpandedTasks((prev) => {
+        const newSet = new Set(prev);
+        newSet.delete(taskId);
+        return newSet;
+      });
+
+      // Remove from removing tasks after animation completes
+      setTimeout(() => {
+        setRemovingTasks((prev) => {
+          const newSet = new Set(prev);
+          newSet.delete(taskId);
+          return newSet;
+        });
+      }, 300); // Match the exit animation duration
+    } catch (error) {
+      console.error("❌ Failed to complete task:", error);
+
+      // Remove from removing tasks on error
+      setRemovingTasks((prev) => {
+        const newSet = new Set(prev);
+        newSet.delete(taskId);
+        return newSet;
+      });
+    }
   };
 
   return (
@@ -65,15 +107,22 @@ const Day: React.FC<DayProps> = ({ dayData }) => {
       <div>
         <h2 className="text-xl font-semibold text-ink mb-4">Tasks</h2>
         <div className="space-y-3">
-          {dayData.tasks.map((task) => (
-            <TaskCard
-              key={task.id}
-              task={task}
-              isExpanded={expandedTasks.has(task.id)}
-              onToggleExpand={handleToggleExpand}
-              onComplete={handleComplete}
-            />
-          ))}
+          <AnimatePresence mode="popLayout">
+            {dayData.tasks
+              .filter((task) => !task.isCompleted) // Only show incomplete tasks
+              .map((task) => (
+                <TaskCard
+                  key={task.id}
+                  task={task}
+                  isExpanded={expandedTasks.has(task.id)}
+                  onToggleExpand={handleToggleExpand}
+                  onComplete={handleComplete}
+                  isCompleting={
+                    completeTaskMutation.isPending && removingTasks.has(task.id)
+                  }
+                />
+              ))}
+          </AnimatePresence>
         </div>
       </div>
     </div>
