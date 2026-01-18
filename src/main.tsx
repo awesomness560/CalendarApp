@@ -5,8 +5,7 @@ import { QueryProvider } from "./providers/QueryProvider.tsx";
 import App from "./App.tsx";
 import "./globals.css";
 
-const CLIENT_ID =
-  "606770711276-636flmfr2t5k6omsmktpq8aahcgr7lvt.apps.googleusercontent.com";
+const CLIENT_ID = import.meta.env.VITE_CLIENT_ID;
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
