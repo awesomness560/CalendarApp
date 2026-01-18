@@ -29,7 +29,7 @@ export const EventCard: React.FC<EventCardProps> = ({ event, onClick }) => {
   // Determine colors based on event type
   const isClass = event.type === "class";
   const colorClasses = isClass
-    ? "bg-event/20 hover:bg-event/30 border border-event border-l-4 border-l-event"
+    ? "bg-event/30 hover:bg-event/30 border border-event border-l-4 border-l-event"
     : "bg-non-class-event/20 hover:bg-non-class-event/30 border border-non-class-event border-l-4 border-l-non-class-event";
 
   return (
