@@ -21,8 +21,6 @@ export interface Task {
 
 export interface DayData {
   date: Date;
-  isHighRes: boolean; // True for Today/Tomorrow
-  hue: number; // Calculated color value
   events: CalendarEvent[];
   tasks: Task[];
   taskCount: number; // For the rail bulge calculation

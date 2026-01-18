@@ -11,3 +11,35 @@
     scrollbar-width: none; /* Firefox */
   }
 }
+
+@theme {
+  /* --- 1. The Canvas (Deep Blue-Grey) --- */
+  /* Main background for the whole app and sidebar */
+  --color-canvas: #0c0d0f;
+
+  /* --- 2. The Surface (Cards & Interactive Areas) --- */
+  /* Default card color */
+  --color-surface: #212224;
+  /* Lighter shade for hover states */
+  --color-surface-hover: #36373c;
+  /* Subtle Indigo tint when a card is expanded/active */
+  --color-surface-active: #12c061;
+
+  /* --- 3. Primary Accent (Active Day & Density Dots) --- */
+  /* Bright Indigo for the "Today" highlight */
+  --color-primary: #6366f1;
+  /* Dimmer Indigo for inactive "future" dots */
+  --color-primary-dim: #4338ca;
+
+  /* --- 4. Event Indicator --- */
+  /* Distinct Sky Blue for scheduled events */
+  --color-event: #0ea5e9;
+  /* Color for non class events */
+  --color-non-class-event: #ffa500;
+
+  /* --- 5. Typography --- */
+  /* High contrast white for main text */
+  --color-ink: #f8fafc;
+  /* Muted slate for dates, metadata, and inactive icons */
+  --color-ink-muted: #94a3b8;
+}

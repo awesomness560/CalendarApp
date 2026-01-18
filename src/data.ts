@@ -1,16 +1,22 @@
 // data.ts
 import { addDays, format, startOfDay } from "date-fns";
 import type { DayData, Task, CalendarEvent } from "./types";
-import { getDayHue } from "./utils";
 
 const generateDummyData = (): DayData[] => {
   const today = startOfDay(new Date());
+
+  // Find the next Monday to ensure we start with weekdays that have classes
+  const todayDayOfWeek = today.getDay(); // 0 = Sunday, 1 = Monday, etc.
+  const daysUntilMonday = todayDayOfWeek === 0 ? 1 : (8 - todayDayOfWeek) % 7;
+  const startDate =
+    daysUntilMonday === 0 ? today : addDays(today, daysUntilMonday);
+
   const days: DayData[] = [];
 
   for (let i = 0; i < 14; i++) {
-    const currentDate = addDays(today, i);
+    const currentDate = addDays(startDate, i);
     const dateString = format(currentDate, "yyyy-MM-dd");
-    const isHighRes = i < 2; // Only Today (0) and Tomorrow (1) get the timeline
+    const isHighRes = i < 2; // Only first two days get the timeline
 
     // 1. Mock Events (Classes & Special)
     const events: CalendarEvent[] = [];
@@ -72,8 +78,6 @@ const generateDummyData = (): DayData[] => {
 
     days.push({
       date: currentDate,
-      isHighRes,
-      hue: getDayHue(currentDate),
       events,
       tasks,
       taskCount: tasks.length,
