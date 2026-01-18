@@ -23,5 +23,4 @@ export interface DayData {
   date: Date;
   events: CalendarEvent[];
   tasks: Task[];
-  taskCount: number; // For the rail bulge calculation
 }

@@ -80,7 +80,6 @@ const generateDummyData = (): DayData[] => {
       date: currentDate,
       events,
       tasks,
-      taskCount: tasks.length,
     });
   }
 
