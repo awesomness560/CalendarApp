@@ -8,9 +8,11 @@ const App: React.FC = () => {
   const [selectedDayIndex, setSelectedDayIndex] = useState(0);
   const mainContentRef = useRef<HTMLDivElement>(null);
   const dayRefs = useRef<(HTMLDivElement | null)[]>([]);
+  const isScrollingFromClick = useRef(false);
 
   const handleDaySelect = (index: number) => {
     setSelectedDayIndex(index);
+    isScrollingFromClick.current = true;
 
     // Scroll to the selected day
     const dayElement = dayRefs.current[index];
@@ -19,13 +21,18 @@ const App: React.FC = () => {
         behavior: "smooth",
         block: "start",
       });
+
+      // Reset flag after scroll completes
+      setTimeout(() => {
+        isScrollingFromClick.current = false;
+      }, 1000);
     }
   };
 
   // Handle scroll to update active sidebar item
   useEffect(() => {
     const handleScroll = () => {
-      if (!mainContentRef.current) return;
+      if (!mainContentRef.current || isScrollingFromClick.current) return;
 
       // Find which day is most visible
       let activeIndex = 0;

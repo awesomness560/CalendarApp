@@ -1,3 +1,4 @@
+@import url("https://fonts.googleapis.com/css2?family=Inter:ital,opsz,wght@0,14..32,100..900;1,14..32,100..900&display=swap");
 @import "tailwindcss";
 
 @layer utilities {
@@ -13,6 +14,7 @@
 }
 
 @theme {
+  --default-font-family: "Inter", sans-serif;
   /* --- 1. The Canvas (Deep Blue-Grey) --- */
   /* Main background for the whole app and sidebar */
   --color-canvas: #0c0d0f;
