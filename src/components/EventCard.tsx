@@ -6,18 +6,27 @@ interface EventCardProps {
   onClick?: (event: CalendarEvent) => void;
 }
 
-// 2. Helper to calculate end time (e.g., "09:00" + 60min -> "10:00")
+// Parse 24h "HH:mm" and return 12h display string (e.g. "9:00 AM", "2:30 PM")
+const formatTime12h = (time24: string): string => {
+  const [hours, minutes] = time24.split(":").map(Number);
+  const date = new Date();
+  date.setHours(hours, minutes, 0, 0);
+  return date.toLocaleTimeString("en-US", {
+    hour: "numeric",
+    minute: "2-digit",
+    hour12: true,
+  });
+};
+
+// Calculate end time from start "HH:mm" + duration (returns 24h "HH:mm")
 const getEndTime = (startTime: string, durationMinutes: number): string => {
   const [hours, minutes] = startTime.split(":").map(Number);
   const date = new Date();
   date.setHours(hours, minutes);
   date.setMinutes(date.getMinutes() + durationMinutes);
-
-  return date.toLocaleTimeString("en-GB", {
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: false,
-  });
+  const h = date.getHours();
+  const m = date.getMinutes();
+  return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
 };
 
 export const EventCard: React.FC<EventCardProps> = ({ event, onClick }) => {
@@ -46,9 +55,9 @@ export const EventCard: React.FC<EventCardProps> = ({ event, onClick }) => {
         transition-all duration-200
       `}
     >
-      {/* Time Range - Top */}
+      {/* Time Range - Top (12-hour format) */}
       <div className="text-xs text-ink-muted mb-2">
-        {event.start} - {endTime}
+        {formatTime12h(event.start)} – {formatTime12h(endTime)}
       </div>
 
       {/* Event Title - Bottom */}

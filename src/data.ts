@@ -1,8 +1,8 @@
 // data.ts
 import { addDays, format, startOfDay } from "date-fns";
-import type { DayData, Task, CalendarEvent } from "./types";
+import type { DayData, Task, CalendarEvent, GoogleDataResponse } from "./types";
 
-const generateDummyData = (): DayData[] => {
+const generateDummyData = (): GoogleDataResponse => {
   const today = startOfDay(new Date());
 
   // Find the next Monday to ensure we start with weekdays that have classes
@@ -82,7 +82,24 @@ const generateDummyData = (): DayData[] => {
     });
   }
 
-  return days;
+  // Mock undated tasks (no due date)
+  const undatedTasks: Task[] = [
+    {
+      id: "task-undated-1",
+      title: "Someday / Maybe",
+      notes: "No due date set.",
+      isCompleted: false,
+      dueDate: "",
+    },
+    {
+      id: "task-undated-2",
+      title: "Backlog item",
+      isCompleted: false,
+      dueDate: "",
+    },
+  ];
+
+  return { days, undatedTasks };
 };
 
 export const DUMMY_DATA = generateDummyData();

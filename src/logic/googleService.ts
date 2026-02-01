@@ -8,7 +8,13 @@ import {
   parseISO,
   isSameDay,
 } from "date-fns";
-import type { DayData, CalendarEvent, Task, EventType } from "../types";
+import type {
+  DayData,
+  CalendarEvent,
+  Task,
+  EventType,
+  GoogleDataResponse,
+} from "../types";
 
 // ==========================================
 // CONFIGURATION
@@ -35,7 +41,7 @@ export const SCOPES = [
  */
 export const fetchGoogleData = async (
   accessToken: string,
-): Promise<DayData[]> => {
+): Promise<GoogleDataResponse> => {
   console.log("🚀 Starting Google data fetch...");
   console.log("📅 Access token:", accessToken ? "✅ Present" : "❌ Missing");
 
@@ -87,14 +93,16 @@ export const fetchGoogleData = async (
       );
     }
 
-    // Filter tasks to our date range (client-side filtering)
-    const filteredTasks = tasks.filter((task) => {
+    // Split tasks: dated (in range) vs undated (no due date)
+    const tasksWithDue = tasks.filter((task) => !!task.due);
+    const undatedRawTasks = tasks.filter((task) => !task.due);
+
+    const filteredTasks = tasksWithDue.filter((task) => {
       if (!task.due) return false;
 
       // Google Tasks due dates are stored as UTC midnight but should be treated as date-only
-      // Extract just the date part (YYYY-MM-DD) and create a local date
-      const dueDateString = task.due.split("T")[0]; // Extract "2026-01-18" from "2026-01-18T00:00:00.000Z"
-      const taskDueDateLocal = parseISO(dueDateString); // Parse as local date without time
+      const dueDateString = task.due.split("T")[0];
+      const taskDueDateLocal = parseISO(dueDateString);
       const todayLocal = startOfDay(today);
       const endDateLocal = startOfDay(endDate);
 
@@ -114,21 +122,24 @@ export const fetchGoogleData = async (
       return isInRange;
     });
 
+    const undatedTasks: Task[] = undatedRawTasks.map(formatTask);
+
     console.log(
-      `📋 Tasks after date filtering: ${filteredTasks.length} (from ${tasks.length} total)`,
+      `📋 Tasks after date filtering: ${filteredTasks.length} dated, ${undatedTasks.length} undated (from ${tasks.length} total)`,
     );
 
     // 3. Map fetched data to the specific days
     days.forEach((day) => {
       const dayStr = format(day.date, "yyyy-MM-dd");
 
-      // Filter events for this day
+      // Filter events for this day and sort by start time (chronological order)
       day.events = calendarEvents
         .filter((event) =>
           // We check if the event starts on this day
           isSameDay(parseISO(event.originalStartDateTime), day.date),
         )
-        .map(formatCalendarEvent);
+        .map(formatCalendarEvent)
+        .sort((a, b) => a.start.localeCompare(b.start));
 
       // Filter tasks for this day
       day.tasks = filteredTasks
@@ -171,12 +182,13 @@ export const fetchGoogleData = async (
     console.log("📊 Final summary:", {
       totalEvents,
       totalTasks,
+      undatedTasks: undatedTasks.length,
       daysWithData: days.filter(
         (d) => d.events.length > 0 || d.tasks.length > 0,
       ).length,
     });
 
-    return days;
+    return { days, undatedTasks };
   } catch (error) {
     console.error("❌ Error fetching Google data:", error);
     throw error;

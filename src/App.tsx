@@ -11,6 +11,7 @@ import {
 } from "./hooks/useGoogleData";
 import Day from "./components/Day";
 import Sidebar from "./components/Sidebar";
+import UndatedTasksSection from "./components/UndatedTasksSection";
 
 const STORAGE_KEYS = {
   ACCESS_TOKEN: "google_access_token",
@@ -29,13 +30,15 @@ const App: React.FC = () => {
 
   // Tanstack Query hooks
   const {
-    data: googleData = DUMMY_DATA,
+    data: googleData,
     isLoading,
     error: queryError,
     isError,
     isFetching,
     isRefetching,
   } = useGoogleData(accessToken, isAuthenticated);
+
+  const { days, undatedTasks } = googleData ?? DUMMY_DATA;
 
   const refreshMutation = useRefreshGoogleData();
   const clearGoogleData = useClearGoogleData();
@@ -266,7 +269,7 @@ const App: React.FC = () => {
 
         <div className="flex-1 overflow-hidden">
           <Sidebar
-            days={googleData}
+            days={days}
             selectedDayIndex={selectedDayIndex}
             onDaySelect={handleDaySelect}
           />
@@ -278,7 +281,10 @@ const App: React.FC = () => {
         ref={mainContentRef}
         className="w-[80%] bg-canvas overflow-y-auto no-scrollbar"
       >
-        {googleData.map((dayData, index) => (
+        {undatedTasks.some((t) => !t.isCompleted) && (
+          <UndatedTasksSection tasks={undatedTasks} accessToken={accessToken} />
+        )}
+        {days.map((dayData, index) => (
           <div
             key={dayData.date.toISOString()}
             ref={(el) => {

@@ -24,3 +24,8 @@ export interface DayData {
   events: CalendarEvent[];
   tasks: Task[];
 }
+
+export interface GoogleDataResponse {
+  days: DayData[];
+  undatedTasks: Task[];
+}

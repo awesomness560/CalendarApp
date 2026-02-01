@@ -1,7 +1,7 @@
 // useGoogleData.ts - Tanstack Query hooks for Google data fetching
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { fetchGoogleData } from "../logic/googleService";
-import type { DayData } from "../types";
+import type { GoogleDataResponse } from "../types";
 
 // Query keys for consistent cache management
 export const googleQueryKeys = {
@@ -17,7 +17,7 @@ export const useGoogleData = (
   accessToken: string,
   isAuthenticated: boolean,
 ) => {
-  return useQuery({
+  return useQuery<GoogleDataResponse>({
     queryKey: googleQueryKeys.data(accessToken),
     queryFn: () => fetchGoogleData(accessToken),
     enabled: isAuthenticated && !!accessToken, // Only run when authenticated
@@ -95,7 +95,9 @@ export const usePrefetchGoogleData = () => {
 export const useGoogleDataCache = (accessToken: string) => {
   const queryClient = useQueryClient();
 
-  return queryClient.getQueryData<DayData[]>(googleQueryKeys.data(accessToken));
+  return queryClient.getQueryData<GoogleDataResponse>(
+    googleQueryKeys.data(accessToken),
+  );
 };
 // Hook for completing a task
 export const useCompleteTask = () => {
