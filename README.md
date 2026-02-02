@@ -34,6 +34,9 @@ A modern React application that unifies your **Google Calendar** and **Google Ta
 ## Project Structure
 
 ```
+api/                        # Vercel serverless (OAuth code exchange + token refresh)
+├── auth.js                 # POST /api/auth – exchange code for tokens
+├── refresh.js              # POST /api/refresh – get new access token
 src/
 ├── App.tsx                 # Main app, auth flow, layout
 ├── main.tsx                # Entry point, providers
@@ -81,9 +84,9 @@ To enable Google sign-in and API access:
    - Under **Scopes**, add: `calendar.readonly` and `tasks` (or add these full URIs: `https://www.googleapis.com/auth/calendar.readonly` and `https://www.googleapis.com/auth/tasks`)
 5. Go to **APIs & Services → Credentials**
 6. Create an **OAuth 2.0 Client ID** (type: Web application)
-7. Add authorized JavaScript origins (e.g. `http://localhost:5173`)
-8. Add authorized redirect URIs (e.g. `http://localhost:5173`)
-9. Copy the **Client ID**
+7. Add authorized JavaScript origins (e.g. `http://localhost:5173` and your production URL like `https://your-app.vercel.app`)
+8. Add authorized redirect URIs (e.g. `http://localhost:5173` and `https://your-app.vercel.app`)
+9. Copy the **Client ID** and **Client Secret** (you need the secret for the backend refresh-token flow)
 
 ### 3. Environment variables
 
@@ -93,25 +96,59 @@ Copy the example env file and add your Google Client ID:
 cp .env.example .env
 ```
 
-Edit `.env`:
+Edit `.env` (for local dev):
 
 ```
 VITE_CLIENT_ID=your-google-oauth-client-id.apps.googleusercontent.com
 ```
 
-### 4. Run the app
+For **local dev with the backend** (auth-code + refresh flow), run the full stack with Vercel CLI so `/api` works:
+
+```bash
+npx vercel dev
+```
+
+Then open [http://localhost:3000](http://localhost:3000). Set in Vercel env (or `.env`): `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` (same client ID as above; secret from Credentials).
+
+### 4. Run the app (frontend only)
 
 ```bash
 npm run dev
 ```
 
-Open [http://localhost:5173](http://localhost:5173). You can use the app with dummy data without signing in, or sign in with Google to sync your real data.
+Open [http://localhost:5173](http://localhost:5173). Without the backend, sign-in uses the token flow (no refresh token; you’ll need to sign in again when the token expires). For refresh tokens, use `vercel dev` or deploy to Vercel (see below).
+
+## Deploy for free (Vercel)
+
+The app includes a tiny backend in `api/` that exchanges the Google auth code for access + refresh tokens and refreshes the access token when it expires. Deploy frontend + API together on Vercel (free tier).
+
+1. **Push your repo to GitHub** (ensure `.env` is not committed; use `.env.example` as a template).
+
+2. **Import the project in Vercel**
+   - Go to [vercel.com](https://vercel.com) → Sign in → Add New → Project → Import your repo.
+   - Framework Preset: **Vite**. Build command: `npm run build`. Output directory: `dist`. No root directory change.
+
+3. **Set environment variables** (Vercel Dashboard → Project → Settings → Environment Variables):
+   - `VITE_CLIENT_ID` = your Google OAuth Client ID (same as local).
+   - `GOOGLE_CLIENT_ID` = same value as `VITE_CLIENT_ID`.
+   - `GOOGLE_CLIENT_SECRET` = your Google OAuth Client Secret (from Cloud Console → Credentials → your Web client → Client secret).
+
+4. **Add your production URL in Google Cloud**
+   - APIs & Services → Credentials → your OAuth 2.0 Client ID.
+   - Add **Authorized JavaScript origins**: `https://<your-vercel-domain>.vercel.app`.
+   - Add **Authorized redirect URIs**: `https://<your-vercel-domain>.vercel.app`.
+
+5. **Deploy**
+   - Deploy from the Vercel dashboard (or push to the linked branch). Vercel builds the Vite app and deploys `api/auth.js` and `api/refresh.js` as serverless functions at `/api/auth` and `/api/refresh`.
+
+No separate server to run; the free tier is enough for personal use.
 
 ## Scripts
 
 | Command       | Description                    |
 | ------------- | ------------------------------ |
-| `npm run dev` | Start dev server               |
+| `npm run dev` | Start Vite dev server (frontend only; no refresh tokens) |
+| `npx vercel dev` | Start Vite + API locally (full auth-code + refresh flow) |
 | `npm run build` | Build for production         |
 | `npm run preview` | Preview production build    |
 | `npm run lint` | Run ESLint                     |
@@ -140,8 +177,9 @@ The app requests:
 
 ## Data flow
 
-1. **Auth** — User signs in with Google; access token stored in `localStorage` with expiry
-2. **Fetch** — TanStack Query calls `fetchGoogleData`, which fetches calendar events and tasks in parallel
+1. **Auth** — User signs in with Google (auth-code flow); frontend sends the code to `/api/auth`; backend exchanges it for access + refresh token and returns them; frontend stores access token (and refresh token) in `localStorage` with expiry.
+2. **Refresh** — When the access token expires (or API returns 401), frontend calls `/api/refresh` with the stored refresh token; backend returns a new access token; frontend updates storage and continues.
+3. **Fetch** — TanStack Query calls `fetchGoogleData`, which fetches calendar events and tasks in parallel
 3. **Transform** — Raw API data is mapped into `DayData` (events + tasks per day) and `undatedTasks`
 4. **Display** — Sidebar shows days with density dots; main content shows events and tasks per day
 5. **Complete** — Task completion uses `completeTask` and `findTaskListForTask`, then invalidates the query to refetch

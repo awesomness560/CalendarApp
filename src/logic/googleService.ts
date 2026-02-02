@@ -251,6 +251,12 @@ async function fetchCalendarEvents(
       );
 
       if (!response.ok) {
+        // Auth errors: token expired or revoked — surface so app can log out
+        if (response.status === 401 || response.status === 403) {
+          throw new Error(
+            `Calendar API ${response.status}: token expired or invalid`,
+          );
+        }
         console.warn(
           `⚠️ Failed to fetch calendar ${calendarId}:`,
           response.status,
@@ -344,6 +350,11 @@ async function fetchTasks(
     console.log("📋 Task lists response status:", listsResponse.status);
 
     if (!listsResponse.ok) {
+      if (listsResponse.status === 401 || listsResponse.status === 403) {
+        throw new Error(
+          `Tasks API ${listsResponse.status}: token expired or invalid`,
+        );
+      }
       console.warn(
         "⚠️ Failed to fetch task lists:",
         listsResponse.status,
@@ -388,6 +399,11 @@ async function fetchTasks(
         console.log(`📋 Tasks response for ${list.title}:`, response.status);
 
         if (!response.ok) {
+          if (response.status === 401 || response.status === 403) {
+            throw new Error(
+              `Tasks API ${response.status}: token expired or invalid`,
+            );
+          }
           console.warn(
             `⚠️ Failed to fetch tasks from ${list.title}:`,
             response.status,

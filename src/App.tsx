@@ -16,8 +16,11 @@ import UndatedTasksSection from "./components/UndatedTasksSection";
 const STORAGE_KEYS = {
   ACCESS_TOKEN: "google_access_token",
   TOKEN_EXPIRY: "google_token_expiry",
+  REFRESH_TOKEN: "google_refresh_token",
   IS_AUTHENTICATED: "google_is_authenticated",
 };
+
+const API_BASE = import.meta.env.VITE_API_URL ?? "";
 
 const App: React.FC = () => {
   const [selectedDayIndex, setSelectedDayIndex] = useState(0);
@@ -52,53 +55,107 @@ const App: React.FC = () => {
         : "An error occurred"
       : "";
 
-  // Check for existing session on component mount
+  const isAuthError =
+    isError &&
+    queryError instanceof Error &&
+    (queryError.message.includes("401") ||
+      queryError.message.includes("403") ||
+      queryError.message.includes("unauthorized"));
+
+  // When the API returns 401/403, try refresh token first; only then logout
+  useEffect(() => {
+    if (!isAuthError) return;
+    const storedRefresh = localStorage.getItem(STORAGE_KEYS.REFRESH_TOKEN);
+    if (storedRefresh) {
+      refreshAccessToken(storedRefresh)
+        .then(({ access_token, expires_in }) => {
+          setAccessToken(access_token);
+          storeSession(access_token, expires_in);
+          // Tanstack Query will refetch with new token
+        })
+        .catch(() => {
+          console.log("🔑 Refresh failed, clearing session");
+          logout();
+        });
+    } else {
+      console.log("🔑 No refresh token, clearing session");
+      logout();
+    }
+  }, [isAuthError]);
+
+  // Check for existing session on component mount; refresh access token if expired but we have refresh_token
   useEffect(() => {
     const checkExistingSession = async () => {
       const storedToken = localStorage.getItem(STORAGE_KEYS.ACCESS_TOKEN);
       const storedExpiry = localStorage.getItem(STORAGE_KEYS.TOKEN_EXPIRY);
+      const storedRefresh = localStorage.getItem(STORAGE_KEYS.REFRESH_TOKEN);
       const storedAuth = localStorage.getItem(STORAGE_KEYS.IS_AUTHENTICATED);
 
       console.log("🔍 Checking for existing session:", {
         hasToken: !!storedToken,
         hasExpiry: !!storedExpiry,
+        hasRefreshToken: !!storedRefresh,
         isAuthenticated: storedAuth === "true",
       });
 
-      if (storedToken && storedExpiry && storedAuth === "true") {
-        const expiryTime = parseInt(storedExpiry);
-        const now = Date.now();
-
-        if (now < expiryTime) {
-          console.log("✅ Valid session found, restoring authentication");
-          setAccessToken(storedToken);
-          setIsAuthenticated(true);
-
-          // Prefetch data with restored token (Tanstack Query will handle the actual fetching)
-          prefetchGoogleData(storedToken);
-        } else {
-          console.log("⏰ Session expired, clearing stored data");
-          clearStoredSession();
-        }
-      } else {
+      if (storedAuth !== "true") {
         console.log("❌ No valid session found");
+        return;
       }
+
+      const expiryTime = parseInt(storedExpiry, 10);
+      const now = Date.now();
+      const isExpired = !storedExpiry || now >= expiryTime;
+
+      if (storedToken && !isExpired) {
+        console.log("✅ Valid session found, restoring authentication");
+        setAccessToken(storedToken);
+        setIsAuthenticated(true);
+        prefetchGoogleData(storedToken);
+        return;
+      }
+
+      if (storedRefresh) {
+        try {
+          const { access_token, expires_in } =
+            await refreshAccessToken(storedRefresh);
+          storeSession(access_token, expires_in);
+          setAccessToken(access_token);
+          setIsAuthenticated(true);
+          prefetchGoogleData(access_token);
+          console.log("✅ Session restored via refresh token");
+          return;
+        } catch (err) {
+          console.warn("⏰ Refresh token failed, clearing session", err);
+        }
+      }
+
+      clearStoredSession();
+      console.log("❌ No valid session found");
     };
 
     checkExistingSession();
   }, [prefetchGoogleData]);
 
-  // Helper function to store session data
-  const storeSession = (token: string, expiresIn: number = 3600) => {
-    const expiryTime = Date.now() + expiresIn * 1000; // Convert seconds to milliseconds
+  // Helper function to store session data (optionally with refresh_token from initial login)
+  const storeSession = (
+    token: string,
+    expiresIn: number = 3600,
+    refreshToken?: string | null,
+  ) => {
+    const expiryTime = Date.now() + expiresIn * 1000;
 
     localStorage.setItem(STORAGE_KEYS.ACCESS_TOKEN, token);
     localStorage.setItem(STORAGE_KEYS.TOKEN_EXPIRY, expiryTime.toString());
     localStorage.setItem(STORAGE_KEYS.IS_AUTHENTICATED, "true");
+    if (refreshToken) {
+      localStorage.setItem(STORAGE_KEYS.REFRESH_TOKEN, refreshToken);
+    }
 
     console.log("💾 Session stored:", {
       expiresIn: `${expiresIn} seconds`,
       expiryTime: new Date(expiryTime).toLocaleString(),
+      hasRefreshToken: !!refreshToken,
     });
   };
 
@@ -106,23 +163,55 @@ const App: React.FC = () => {
   const clearStoredSession = () => {
     localStorage.removeItem(STORAGE_KEYS.ACCESS_TOKEN);
     localStorage.removeItem(STORAGE_KEYS.TOKEN_EXPIRY);
+    localStorage.removeItem(STORAGE_KEYS.REFRESH_TOKEN);
     localStorage.removeItem(STORAGE_KEYS.IS_AUTHENTICATED);
     console.log("🗑️ Session cleared from storage");
   };
 
-  // Google Login
+  // Call backend to exchange auth code for tokens (auth-code flow)
+  const exchangeCodeForTokens = async (code: string) => {
+    const redirect_uri = window.location.origin;
+    const res = await fetch(`${API_BASE}/api/auth`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ code, redirect_uri }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || "Token exchange failed");
+    return data as {
+      access_token: string;
+      expires_in: number;
+      refresh_token: string | null;
+    };
+  };
+
+  // Call backend to get new access token using refresh token
+  const refreshAccessToken = async (refresh_token: string) => {
+    const res = await fetch(`${API_BASE}/api/refresh`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ refresh_token }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || "Refresh failed");
+    return data as { access_token: string; expires_in: number };
+  };
+
+  // Google Login (authorization code flow → backend exchanges for access + refresh token)
   const login = useGoogleLogin({
-    onSuccess: async (tokenResponse) => {
-      console.log("🔐 Google login successful:", tokenResponse);
-
-      setAccessToken(tokenResponse.access_token);
-      setIsAuthenticated(true);
-
-      // Store session data (Google tokens typically expire in 1 hour)
-      const expiresIn = tokenResponse.expires_in || 3600;
-      storeSession(tokenResponse.access_token, expiresIn);
-
-      // Tanstack Query will automatically fetch data when accessToken and isAuthenticated change
+    flow: "auth-code",
+    onSuccess: async (codeResponse) => {
+      console.log("🔐 Google auth code received, exchanging for tokens...");
+      try {
+        const { access_token, expires_in, refresh_token } =
+          await exchangeCodeForTokens(codeResponse.code);
+        setAccessToken(access_token);
+        setIsAuthenticated(true);
+        storeSession(access_token, expires_in, refresh_token);
+      } catch (err) {
+        console.error("❌ Token exchange failed:", err);
+        clearStoredSession();
+      }
     },
     onError: (error) => {
       console.error("❌ Google login failed:", error);
