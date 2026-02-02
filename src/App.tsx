@@ -62,81 +62,6 @@ const App: React.FC = () => {
       queryError.message.includes("403") ||
       queryError.message.includes("unauthorized"));
 
-  // When the API returns 401/403, try refresh token first; only then logout
-  useEffect(() => {
-    if (!isAuthError) return;
-    const storedRefresh = localStorage.getItem(STORAGE_KEYS.REFRESH_TOKEN);
-    if (storedRefresh) {
-      refreshAccessToken(storedRefresh)
-        .then(({ access_token, expires_in }) => {
-          setAccessToken(access_token);
-          storeSession(access_token, expires_in);
-          // Tanstack Query will refetch with new token
-        })
-        .catch(() => {
-          console.log("🔑 Refresh failed, clearing session");
-          logout();
-        });
-    } else {
-      console.log("🔑 No refresh token, clearing session");
-      logout();
-    }
-  }, [isAuthError]);
-
-  // Check for existing session on component mount; refresh access token if expired but we have refresh_token
-  useEffect(() => {
-    const checkExistingSession = async () => {
-      const storedToken = localStorage.getItem(STORAGE_KEYS.ACCESS_TOKEN);
-      const storedExpiry = localStorage.getItem(STORAGE_KEYS.TOKEN_EXPIRY);
-      const storedRefresh = localStorage.getItem(STORAGE_KEYS.REFRESH_TOKEN);
-      const storedAuth = localStorage.getItem(STORAGE_KEYS.IS_AUTHENTICATED);
-
-      console.log("🔍 Checking for existing session:", {
-        hasToken: !!storedToken,
-        hasExpiry: !!storedExpiry,
-        hasRefreshToken: !!storedRefresh,
-        isAuthenticated: storedAuth === "true",
-      });
-
-      if (storedAuth !== "true") {
-        console.log("❌ No valid session found");
-        return;
-      }
-
-      const expiryTime = parseInt(storedExpiry, 10);
-      const now = Date.now();
-      const isExpired = !storedExpiry || now >= expiryTime;
-
-      if (storedToken && !isExpired) {
-        console.log("✅ Valid session found, restoring authentication");
-        setAccessToken(storedToken);
-        setIsAuthenticated(true);
-        prefetchGoogleData(storedToken);
-        return;
-      }
-
-      if (storedRefresh) {
-        try {
-          const { access_token, expires_in } =
-            await refreshAccessToken(storedRefresh);
-          storeSession(access_token, expires_in);
-          setAccessToken(access_token);
-          setIsAuthenticated(true);
-          prefetchGoogleData(access_token);
-          console.log("✅ Session restored via refresh token");
-          return;
-        } catch (err) {
-          console.warn("⏰ Refresh token failed, clearing session", err);
-        }
-      }
-
-      clearStoredSession();
-      console.log("❌ No valid session found");
-    };
-
-    checkExistingSession();
-  }, [prefetchGoogleData]);
-
   // Helper function to store session data (optionally with refresh_token from initial login)
   const storeSession = (
     token: string,
@@ -197,6 +122,92 @@ const App: React.FC = () => {
     return data as { access_token: string; expires_in: number };
   };
 
+  // Logout (defined before useEffects that use it)
+  const logout = () => {
+    console.log("🔐 Logging out...");
+    googleLogout();
+    setIsAuthenticated(false);
+    setAccessToken("");
+    clearStoredSession();
+    clearGoogleData(); // Clear Tanstack Query cache
+  };
+
+  // When the API returns 401/403, try refresh token first; only then logout
+  useEffect(() => {
+    if (!isAuthError) return;
+    const storedRefresh = localStorage.getItem(STORAGE_KEYS.REFRESH_TOKEN);
+    if (storedRefresh) {
+      refreshAccessToken(storedRefresh)
+        .then(({ access_token, expires_in }) => {
+          setAccessToken(access_token);
+          storeSession(access_token, expires_in);
+          // Tanstack Query will refetch with new token
+        })
+        .catch(() => {
+          console.log("🔑 Refresh failed, clearing session");
+          queueMicrotask(() => logout());
+        });
+    } else {
+      console.log("🔑 No refresh token, clearing session");
+      queueMicrotask(() => logout());
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- logout intentionally omitted to avoid effect running every render
+  }, [isAuthError]);
+
+  // Check for existing session on component mount; refresh access token if expired but we have refresh_token
+  useEffect(() => {
+    const checkExistingSession = async () => {
+      const storedToken = localStorage.getItem(STORAGE_KEYS.ACCESS_TOKEN);
+      const storedExpiry = localStorage.getItem(STORAGE_KEYS.TOKEN_EXPIRY);
+      const storedRefresh = localStorage.getItem(STORAGE_KEYS.REFRESH_TOKEN);
+      const storedAuth = localStorage.getItem(STORAGE_KEYS.IS_AUTHENTICATED);
+
+      console.log("🔍 Checking for existing session:", {
+        hasToken: !!storedToken,
+        hasExpiry: !!storedExpiry,
+        hasRefreshToken: !!storedRefresh,
+        isAuthenticated: storedAuth === "true",
+      });
+
+      if (storedAuth !== "true") {
+        console.log("❌ No valid session found");
+        return;
+      }
+
+      const expiryTime = parseInt(storedExpiry ?? "0", 10);
+      const now = Date.now();
+      const isExpired = !storedExpiry || Number.isNaN(expiryTime) || now >= expiryTime;
+
+      if (storedToken && !isExpired) {
+        console.log("✅ Valid session found, restoring authentication");
+        setAccessToken(storedToken);
+        setIsAuthenticated(true);
+        prefetchGoogleData(storedToken);
+        return;
+      }
+
+      if (storedRefresh) {
+        try {
+          const { access_token, expires_in } =
+            await refreshAccessToken(storedRefresh);
+          storeSession(access_token, expires_in);
+          setAccessToken(access_token);
+          setIsAuthenticated(true);
+          prefetchGoogleData(access_token);
+          console.log("✅ Session restored via refresh token");
+          return;
+        } catch (err) {
+          console.warn("⏰ Refresh token failed, clearing session", err);
+        }
+      }
+
+      clearStoredSession();
+      console.log("❌ No valid session found");
+    };
+
+    checkExistingSession();
+  }, [prefetchGoogleData]);
+
   // Google Login (authorization code flow → backend exchanges for access + refresh token)
   const login = useGoogleLogin({
     flow: "auth-code",
@@ -241,16 +252,6 @@ const App: React.FC = () => {
         logout();
       }
     }
-  };
-
-  // Logout
-  const logout = () => {
-    console.log("🔐 Logging out...");
-    googleLogout();
-    setIsAuthenticated(false);
-    setAccessToken("");
-    clearStoredSession();
-    clearGoogleData(); // Clear Tanstack Query cache
   };
 
   const handleDaySelect = (index: number) => {

@@ -197,12 +197,17 @@ export const fetchGoogleData = async (
 
 // --- Calendar Helpers ---
 
-interface GoogleCalendarEvent {
+/** Raw event from Google Calendar API response */
+interface GoogleCalendarEventRaw {
   id: string;
-  summary: string;
+  summary?: string;
   start: { dateTime?: string; date?: string };
   end: { dateTime?: string; date?: string };
   organizer?: { email: string };
+}
+
+interface GoogleCalendarEvent extends GoogleCalendarEventRaw {
+  sourceCalendarId: string;
   originalStartDateTime: string; // Helper property we add for sorting
 }
 
@@ -266,7 +271,7 @@ async function fetchCalendarEvents(
       }
 
       const data = await response.json();
-      const events = (data.items || []).map((item: any) => ({
+      const events = (data.items || []).map((item: GoogleCalendarEventRaw) => ({
         ...item,
         // Tag the event with the source calendar ID so we can identify "classes" later
         sourceCalendarId: calendarId,
@@ -288,10 +293,12 @@ async function fetchCalendarEvents(
   return allEvents;
 }
 
-function formatCalendarEvent(item: any): CalendarEvent {
+function formatCalendarEvent(item: GoogleCalendarEvent): CalendarEvent {
   const isAllDay = !item.start.dateTime;
-  const startDt = parseISO(item.start.dateTime || item.start.date);
-  const endDt = parseISO(item.end.dateTime || item.end.date);
+  const startStr = item.start.dateTime ?? item.start.date ?? "";
+  const endStr = item.end.dateTime ?? item.end.date ?? "";
+  const startDt = parseISO(startStr);
+  const endDt = parseISO(endStr);
 
   // Determine Type
   let type: EventType = "event";
@@ -366,9 +373,13 @@ async function fetchTasks(
     const listsData = await listsResponse.json();
     const taskLists = listsData.items || [];
 
+    interface TaskListRef {
+      id: string;
+      title: string;
+    }
     console.log(
       `📋 Found ${taskLists.length} task lists:`,
-      taskLists.map((list: any) => list.title),
+      (taskLists as TaskListRef[]).map((list) => list.title),
     );
 
     // 2. Fetch tasks for each list
@@ -542,7 +553,7 @@ export const findTaskListForTask = async (
           const tasksData = await tasksResponse.json();
           const tasks = tasksData.items || [];
 
-          if (tasks.some((task: any) => task.id === taskId)) {
+          if ((tasks as { id: string }[]).some((task) => task.id === taskId)) {
             console.log("✅ Found task in list:", list.title, list.id);
             return list.id;
           }
